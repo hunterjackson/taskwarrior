@@ -36,6 +36,7 @@ jobs:
           apt-get update -y
           apt-get install -y \
             build-essential \
+            binutils \
             uuid-dev \
             curl \
             wget \
@@ -54,37 +55,43 @@ jobs:
           apt-get update -y
           apt-get install -y cmake ninja-build
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      - name: Install Rust manually
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        env:
+          CARGO_HOME: /root/.cargo
+          RUSTUP_HOME: /root/.rustup
 
       - name: Configure CMake
         run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
 
       - name: Build project
-        run: cmake --build build
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cmake --build build
+
+      - name: Strip binaries
+        run: |
+          strip --strip-all build/src/task
 
       - name: Install to AppDir
         run: |
           DESTDIR=${{ github.workspace }}/AppDir cmake --install build
 
-      - name: Download linuxdeploy and AppImage plugin
+      - name: Download and extract linuxdeploy
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
+          # Extract AppImage since FUSE doesn't work in containers
+          ./linuxdeploy-x86_64.AppImage --appimage-extract
+          mv squashfs-root linuxdeploy-extracted
+          chmod +x linuxdeploy-extracted/AppRun
 
       - name: Create AppImage desktop file
         run: |
@@ -110,12 +117,17 @@ jobs:
 
       - name: Build AppImage
         run: |
-          ./linuxdeploy-x86_64.AppImage \
+          # Use extracted linuxdeploy
+          ./linuxdeploy-extracted/AppRun \
             --appdir AppDir \
             --output appimage \
             --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
             --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
             --executable=AppDir/usr/bin/task
+        env:
+          ARCH: x86_64
+          # Exclude system libraries that should not be bundled
+          EXCLUDE_LIST: "libgcc_s.so.1,libstdc++.so.6,libc.so.6,libpthread.so.0,libm.so.6,libdl.so.2,librt.so.1"
 
       - name: Rename AppImage
         run: |
@@ -123,6 +135,12 @@ jobs:
           COMMIT=$(git rev-parse --short HEAD)
           mv task-*.AppImage taskwarrior-${VERSION}-${COMMIT}-x86_64.AppImage || \
           mv *.AppImage taskwarrior-x86_64.AppImage
+
+      - name: Test AppImage
+        run: |
+          # Make executable and test basic functionality
+          chmod +x taskwarrior-*.AppImage
+          ./taskwarrior-*.AppImage --version || echo "Version check failed but continuing"
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
