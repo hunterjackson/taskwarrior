@@ -80,16 +80,16 @@ jobs:
 
               # Create AppImage desktop file
               mkdir -p AppDir/usr/share/applications
-              cat > AppDir/usr/share/applications/taskwarrior.desktop << "DESKTOP_EOF"
-[Desktop Entry]
-Type=Application
-Name=Taskwarrior
-Comment=Command-line task list manager
-Exec=task
-Icon=taskwarrior
-Terminal=true
-Categories=Utility;ConsoleOnly;
-DESKTOP_EOF
+              printf "%s\n" \
+                "[Desktop Entry]" \
+                "Type=Application" \
+                "Name=Taskwarrior" \
+                "Comment=Command-line task list manager" \
+                "Exec=task" \
+                "Icon=taskwarrior" \
+                "Terminal=true" \
+                "Categories=Utility;ConsoleOnly;" \
+                > AppDir/usr/share/applications/taskwarrior.desktop
 
               # Create AppImage icon
               mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
