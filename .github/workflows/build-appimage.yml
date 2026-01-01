@@ -113,12 +113,21 @@ jobs:
                 --executable=AppDir/usr/bin/task
 
               # Rename AppImage
-              VERSION=$(grep "VERSION" build/CMakeCache.txt | grep PROJECT_VERSION | cut -d"=" -f2)
+              VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d"=" -f2 | tr -d " \n\r")
+              echo "Detected version: $VERSION"
+              echo "Git commit: $GIT_COMMIT"
+
+              # List what we have
+              ls -la *.AppImage || echo "No AppImage files found"
+
               # Find the generated AppImage and rename it
-              APPIMAGE=$(ls -1 *.AppImage 2>/dev/null | head -1)
-              if [ -n "$APPIMAGE" ]; then
-                mv "$APPIMAGE" taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage
-              fi
+              for appimage in *.AppImage; do
+                if [ -f "$appimage" ]; then
+                  echo "Renaming $appimage to taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage"
+                  mv "$appimage" "taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage"
+                  break
+                fi
+              done
 
               # Make AppImage executable
               chmod +x taskwarrior-*.AppImage
