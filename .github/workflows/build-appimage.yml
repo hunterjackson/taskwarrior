@@ -114,8 +114,11 @@ jobs:
 
               # Rename AppImage
               VERSION=$(grep "VERSION" build/CMakeCache.txt | grep PROJECT_VERSION | cut -d"=" -f2)
-              mv task-*.AppImage taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage 2>/dev/null || \
-                mv *.AppImage taskwarrior-x86_64.AppImage
+              # Find the generated AppImage and rename it
+              APPIMAGE=$(ls -1 *.AppImage 2>/dev/null | head -1)
+              if [ -n "$APPIMAGE" ]; then
+                mv "$APPIMAGE" taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage
+              fi
 
               # Make AppImage executable
               chmod +x taskwarrior-*.AppImage
