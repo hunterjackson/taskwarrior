@@ -13,131 +13,110 @@ on:
 jobs:
   build-appimage:
     runs-on: ubuntu-22.04
-    container:
-      image: ubuntu:18.04
-      options: --user root
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
-      - name: Install git and basic tools
-        run: |
-          apt-get update -y
-          apt-get install -y git ca-certificates
-
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install build dependencies
+      - name: Build AppImage in Ubuntu 18.04 container
         run: |
-          apt-get install -y \
-            build-essential \
-            binutils \
-            uuid-dev \
-            curl \
-            wget \
-            file \
-            libfuse2 \
-            pkg-config \
-            libssl-dev \
-            gnupg \
-            software-properties-common
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e DEBIAN_FRONTEND=noninteractive \
+            ubuntu:18.04 \
+            bash -c '
+              set -e
 
-      - name: Install modern CMake and Ninja
-        run: |
-          # Add Kitware's APT repository for latest CMake
-          wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
-          echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ bionic main' | tee /etc/apt/sources.list.d/kitware.list >/dev/null
-          apt-get update -y
-          apt-get install -y cmake ninja-build
+              # Install build dependencies
+              apt-get update -y
+              apt-get install -y \
+                build-essential \
+                binutils \
+                uuid-dev \
+                curl \
+                wget \
+                file \
+                libfuse2 \
+                ca-certificates \
+                pkg-config \
+                libssl-dev \
+                gnupg \
+                software-properties-common \
+                git
 
-      - name: Install Rust manually
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-        env:
-          CARGO_HOME: /root/.cargo
-          RUSTUP_HOME: /root/.rustup
+              # Install modern CMake from Kitware
+              wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+              echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ bionic main" | tee /etc/apt/sources.list.d/kitware.list >/dev/null
+              apt-get update -y
+              apt-get install -y cmake ninja-build
 
-      - name: Configure CMake
-        run: |
-          export PATH="$HOME/.cargo/bin:$PATH"
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr \
-            -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+              # Install Rust
+              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+              export PATH="$HOME/.cargo/bin:$PATH"
+              export CARGO_HOME=/root/.cargo
+              export RUSTUP_HOME=/root/.rustup
 
-      - name: Build project
-        run: |
-          export PATH="$HOME/.cargo/bin:$PATH"
-          cmake --build build
+              # Configure CMake
+              cmake -S . -B build -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX=/usr \
+                -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
 
-      - name: Strip binaries
-        run: |
-          strip --strip-all build/src/task
+              # Build
+              cmake --build build
 
-      - name: Install to AppDir
-        run: |
-          DESTDIR=${{ github.workspace }}/AppDir cmake --install build
+              # Strip binaries
+              strip --strip-all build/src/task
 
-      - name: Download and extract linuxdeploy
-        run: |
-          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          chmod +x linuxdeploy-x86_64.AppImage
-          # Extract AppImage since FUSE doesn't work in containers
-          ./linuxdeploy-x86_64.AppImage --appimage-extract
-          mv squashfs-root linuxdeploy-extracted
-          chmod +x linuxdeploy-extracted/AppRun
+              # Install to AppDir
+              DESTDIR=/workspace/AppDir cmake --install build
 
-      - name: Create AppImage desktop file
-        run: |
-          mkdir -p AppDir/usr/share/applications
-          cat > AppDir/usr/share/applications/taskwarrior.desktop << 'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=Taskwarrior
-          Comment=Command-line task list manager
-          Exec=task
-          Icon=taskwarrior
-          Terminal=true
-          Categories=Utility;ConsoleOnly;
-          EOF
+              # Download and extract linuxdeploy
+              wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+              chmod +x linuxdeploy-x86_64.AppImage
+              ./linuxdeploy-x86_64.AppImage --appimage-extract
 
-      - name: Create AppImage icon
-        run: |
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-          # Create a simple placeholder icon (you can replace this with an actual icon)
-          wget -q -O AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
-            https://avatars.githubusercontent.com/u/36100920?s=256 || \
-          echo "Icon download failed, continuing anyway"
+              # Create AppImage desktop file
+              mkdir -p AppDir/usr/share/applications
+              cat > AppDir/usr/share/applications/taskwarrior.desktop << "DESKTOP_EOF"
+[Desktop Entry]
+Type=Application
+Name=Taskwarrior
+Comment=Command-line task list manager
+Exec=task
+Icon=taskwarrior
+Terminal=true
+Categories=Utility;ConsoleOnly;
+DESKTOP_EOF
 
-      - name: Build AppImage
-        run: |
-          # Use extracted linuxdeploy
-          ./linuxdeploy-extracted/AppRun \
-            --appdir AppDir \
-            --output appimage \
-            --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
-            --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
-            --executable=AppDir/usr/bin/task
-        env:
-          ARCH: x86_64
-          # Exclude system libraries that should not be bundled
-          EXCLUDE_LIST: "libgcc_s.so.1,libstdc++.so.6,libc.so.6,libpthread.so.0,libm.so.6,libdl.so.2,librt.so.1"
+              # Create AppImage icon
+              mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+              wget -q -O AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
+                https://avatars.githubusercontent.com/u/36100920?s=256 || \
+                echo "Icon download failed, continuing anyway"
 
-      - name: Rename AppImage
-        run: |
-          VERSION=$(grep "VERSION" build/CMakeCache.txt | grep PROJECT_VERSION | cut -d'=' -f2)
-          COMMIT=$(git rev-parse --short HEAD)
-          mv task-*.AppImage taskwarrior-${VERSION}-${COMMIT}-x86_64.AppImage || \
-          mv *.AppImage taskwarrior-x86_64.AppImage
+              # Build AppImage
+              ARCH=x86_64 ./squashfs-root/AppRun \
+                --appdir AppDir \
+                --output appimage \
+                --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
+                --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
+                --executable=AppDir/usr/bin/task
 
-      - name: Test AppImage
-        run: |
-          # Make executable and test basic functionality
-          chmod +x taskwarrior-*.AppImage
-          ./taskwarrior-*.AppImage --version || echo "Version check failed but continuing"
+              # Rename AppImage
+              VERSION=$(grep "VERSION" build/CMakeCache.txt | grep PROJECT_VERSION | cut -d"=" -f2)
+              COMMIT=$(git rev-parse --short HEAD)
+              mv task-*.AppImage taskwarrior-${VERSION}-${COMMIT}-x86_64.AppImage 2>/dev/null || \
+                mv *.AppImage taskwarrior-x86_64.AppImage
+
+              # Make AppImage executable
+              chmod +x taskwarrior-*.AppImage
+
+              # Test AppImage
+              ./taskwarrior-*.AppImage --version || echo "Version check failed but continuing"
+            '
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
