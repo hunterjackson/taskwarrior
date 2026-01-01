@@ -19,12 +19,19 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Get version info
+        id: version
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
       - name: Build AppImage in Ubuntu 18.04 container
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e DEBIAN_FRONTEND=noninteractive \
+            -e GIT_COMMIT=${{ steps.version.outputs.commit }} \
             ubuntu:18.04 \
             bash -c '
               set -e
@@ -107,8 +114,7 @@ jobs:
 
               # Rename AppImage
               VERSION=$(grep "VERSION" build/CMakeCache.txt | grep PROJECT_VERSION | cut -d"=" -f2)
-              COMMIT=$(git rev-parse --short HEAD)
-              mv task-*.AppImage taskwarrior-${VERSION}-${COMMIT}-x86_64.AppImage 2>/dev/null || \
+              mv task-*.AppImage taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage 2>/dev/null || \
                 mv *.AppImage taskwarrior-x86_64.AppImage
 
               # Make AppImage executable
