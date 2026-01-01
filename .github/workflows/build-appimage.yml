@@ -143,9 +143,214 @@ jobs:
           path: '*.AppImage'
           if-no-files-found: error
 
-      - name: Summary
+      - name: Build Summary
         run: |
           echo "### AppImage Build Completed :package:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "AppImage built successfully!" >> $GITHUB_STEP_SUMMARY
           ls -lh *.AppImage >> $GITHUB_STEP_SUMMARY
+
+  test-compatibility:
+    needs: build-appimage
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu LTS versions
+          - name: "Ubuntu 18.04 (Bionic)"
+            image: "ubuntu:18.04"
+            category: "ubuntu-lts"
+          - name: "Ubuntu 20.04 (Focal)"
+            image: "ubuntu:20.04"
+            category: "ubuntu-lts"
+          - name: "Ubuntu 22.04 (Jammy)"
+            image: "ubuntu:22.04"
+            category: "ubuntu-lts"
+          - name: "Ubuntu 24.04 (Noble)"
+            image: "ubuntu:24.04"
+            category: "ubuntu-lts"
+
+          # Debian versions
+          - name: "Debian 10 (Buster)"
+            image: "debian:buster"
+            category: "debian"
+          - name: "Debian 11 (Bullseye)"
+            image: "debian:bullseye"
+            category: "debian"
+          - name: "Debian 12 (Bookworm)"
+            image: "debian:bookworm"
+            category: "debian"
+
+          # Fedora recent versions
+          - name: "Fedora 38"
+            image: "fedora:38"
+            category: "fedora"
+          - name: "Fedora 39"
+            image: "fedora:39"
+            category: "fedora"
+          - name: "Fedora 40"
+            image: "fedora:40"
+            category: "fedora"
+          - name: "Fedora 41"
+            image: "fedora:41"
+            category: "fedora"
+
+          # RHEL/CentOS family
+          - name: "CentOS Stream 9"
+            image: "quay.io/centos/centos:stream9"
+            category: "rhel"
+          - name: "Rocky Linux 8"
+            image: "rockylinux:8"
+            category: "rhel"
+          - name: "Rocky Linux 9"
+            image: "rockylinux:9"
+            category: "rhel"
+          - name: "AlmaLinux 8"
+            image: "almalinux:8"
+            category: "rhel"
+          - name: "AlmaLinux 9"
+            image: "almalinux:9"
+            category: "rhel"
+
+          # Arch and OpenSUSE
+          - name: "Arch Linux"
+            image: "archlinux:latest"
+            category: "rolling"
+          - name: "OpenSUSE Tumbleweed"
+            image: "opensuse/tumbleweed:latest"
+            category: "rolling"
+
+    steps:
+      - name: Download AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: taskwarrior-appimage
+
+      - name: Test AppImage on ${{ matrix.name }}
+        id: test
+        continue-on-error: true
+        run: |
+          chmod +x *.AppImage
+          APPIMAGE=$(ls -1 *.AppImage | head -1)
+
+          echo "Testing $APPIMAGE on ${{ matrix.name }}"
+
+          # Test in container
+          docker run --rm \
+            -v $(pwd):/test \
+            -w /test \
+            ${{ matrix.image }} \
+            bash -c '
+              # Install FUSE if needed for AppImage extraction
+              if command -v apt-get &> /dev/null; then
+                apt-get update -qq && apt-get install -qq -y libfuse2 > /dev/null 2>&1 || true
+              elif command -v dnf &> /dev/null; then
+                dnf install -y fuse-libs > /dev/null 2>&1 || true
+              elif command -v yum &> /dev/null; then
+                yum install -y fuse-libs > /dev/null 2>&1 || true
+              elif command -v zypper &> /dev/null; then
+                zypper install -y fuse > /dev/null 2>&1 || true
+              elif command -v pacman &> /dev/null; then
+                pacman -Sy --noconfirm fuse2 > /dev/null 2>&1 || true
+              fi
+
+              # Try to run AppImage
+              chmod +x '"$APPIMAGE"'
+              echo "=== Testing --version ==="
+              ./'"$APPIMAGE"' --version || exit 1
+
+              echo "=== Testing --help ==="
+              ./'"$APPIMAGE"' --help || exit 1
+
+              echo "=== Testing basic task command ==="
+              ./'"$APPIMAGE"' rc.data.location=/tmp/tasktest rc.confirmation=no add Test task || exit 1
+              ./'"$APPIMAGE"' rc.data.location=/tmp/tasktest list || exit 1
+
+              echo "All tests passed!"
+            ' && echo "result=success" >> $GITHUB_OUTPUT || echo "result=failed" >> $GITHUB_OUTPUT
+
+      - name: Record result
+        if: always()
+        run: |
+          mkdir -p test-results
+          if [ "${{ steps.test.outputs.result }}" = "success" ]; then
+            echo "✅ PASS" > test-results/${{ matrix.category }}-${{ strategy.job-index }}.txt
+          else
+            echo "❌ FAIL" > test-results/${{ matrix.category }}-${{ strategy.job-index }}.txt
+          fi
+          echo "${{ matrix.name }}" >> test-results/${{ matrix.category }}-${{ strategy.job-index }}.txt
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-result-${{ strategy.job-index }}
+          path: test-results/
+
+  report-results:
+    needs: test-compatibility
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-result-*
+          path: all-results
+          merge-multiple: true
+
+      - name: Generate compatibility report
+        run: |
+          echo "## 🧪 AppImage Compatibility Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Built on Ubuntu 18.04 for maximum compatibility" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Count results
+          TOTAL=$(find all-results -name "*.txt" | wc -l)
+          PASSED=$(grep -l "✅" all-results/*.txt 2>/dev/null | wc -l)
+          FAILED=$(grep -l "❌" all-results/*.txt 2>/dev/null | wc -l)
+
+          echo "### Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Tested**: $TOTAL distributions" >> $GITHUB_STEP_SUMMARY
+          echo "- **Passed**: $PASSED ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- **Failed**: $FAILED ❌" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Group by category
+          echo "### Results by Distribution Family" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for category in ubuntu-lts debian fedora rhel rolling; do
+            FILES=$(find all-results -name "${category}-*.txt" 2>/dev/null)
+            if [ -n "$FILES" ]; then
+              case $category in
+                ubuntu-lts) echo "#### Ubuntu LTS" ;;
+                debian) echo "#### Debian" ;;
+                fedora) echo "#### Fedora" ;;
+                rhel) echo "#### RHEL/CentOS/Rocky/Alma" ;;
+                rolling) echo "#### Rolling Release" ;;
+              esac >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              for file in $FILES; do
+                STATUS=$(head -1 "$file")
+                DISTRO=$(tail -1 "$file")
+                echo "- $STATUS $DISTRO" >> $GITHUB_STEP_SUMMARY
+              done
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          # Show failures in detail if any
+          if [ $FAILED -gt 0 ]; then
+            echo "### ⚠️ Failed Distributions" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The following distributions failed compatibility tests:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            grep -l "❌" all-results/*.txt | while read file; do
+              DISTRO=$(tail -1 "$file")
+              echo "- $DISTRO" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
