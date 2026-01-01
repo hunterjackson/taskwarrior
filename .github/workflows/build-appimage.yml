@@ -45,7 +45,7 @@ jobs:
             ca-certificates \
             pkg-config \
             libssl-dev \
-            gpg
+            gnupg
 
       - name: Install modern CMake and Ninja
         run: |
