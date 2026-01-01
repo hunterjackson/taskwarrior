@@ -222,35 +222,23 @@ jobs:
           echo "Testing $APPIMAGE on ${{ matrix.name }}"
 
           # Test in container
+          # AppImages need --appimage-extract-and-run in Docker (no FUSE available)
           docker run --rm \
             -v $(pwd):/test \
             -w /test \
             ${{ matrix.image }} \
             bash -c '
-              # Install FUSE if needed for AppImage extraction
-              if command -v apt-get &> /dev/null; then
-                apt-get update -qq && apt-get install -qq -y libfuse2 > /dev/null 2>&1 || true
-              elif command -v dnf &> /dev/null; then
-                dnf install -y fuse-libs > /dev/null 2>&1 || true
-              elif command -v yum &> /dev/null; then
-                yum install -y fuse-libs > /dev/null 2>&1 || true
-              elif command -v zypper &> /dev/null; then
-                zypper install -y fuse > /dev/null 2>&1 || true
-              elif command -v pacman &> /dev/null; then
-                pacman -Sy --noconfirm fuse2 > /dev/null 2>&1 || true
-              fi
-
-              # Try to run AppImage
               chmod +x '"$APPIMAGE"'
+
               echo "=== Testing --version ==="
-              ./'"$APPIMAGE"' --version || exit 1
+              ./'"$APPIMAGE"' --appimage-extract-and-run --version || exit 1
 
               echo "=== Testing --help ==="
-              ./'"$APPIMAGE"' --help || exit 1
+              ./'"$APPIMAGE"' --appimage-extract-and-run --help || exit 1
 
               echo "=== Testing basic task command ==="
-              ./'"$APPIMAGE"' rc.data.location=/tmp/tasktest rc.confirmation=no add Test task || exit 1
-              ./'"$APPIMAGE"' rc.data.location=/tmp/tasktest list || exit 1
+              ./'"$APPIMAGE"' --appimage-extract-and-run rc.data.location=/tmp/tasktest rc.confirmation=no add Test task || exit 1
+              ./'"$APPIMAGE"' --appimage-extract-and-run rc.data.location=/tmp/tasktest list || exit 1
 
               echo "All tests passed!"
             ' && echo "result=success" >> $GITHUB_OUTPUT || echo "result=failed" >> $GITHUB_OUTPUT
