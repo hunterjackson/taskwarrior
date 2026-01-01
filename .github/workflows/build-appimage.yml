@@ -150,37 +150,61 @@ jobs:
           echo "AppImage built successfully!" >> $GITHUB_STEP_SUMMARY
           ls -lh *.AppImage >> $GITHUB_STEP_SUMMARY
 
-  setup-test-matrix:
-    needs: build-appimage
-    runs-on: ubuntu-22.04
-    outputs:
-      matrix: ${{ steps.generate-matrix.outputs.matrix }}
-      count: ${{ steps.generate-matrix.outputs.count }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate test matrix
-        id: generate-matrix
-        run: |
-          # Run the script to generate the distro matrix
-          MATRIX=$(bash .github/scripts/get-test-distros.sh)
-          echo "Generated matrix: $MATRIX"
-
-          # Output the matrix
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
-
-          # Count how many distros we're testing
-          COUNT=$(echo "$MATRIX" | jq '.include | length')
-          echo "count=$COUNT" >> $GITHUB_OUTPUT
-          echo "Will test on $COUNT distributions"
-
   test-compatibility:
-    needs: setup-test-matrix
+    needs: build-appimage
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.setup-test-matrix.outputs.matrix) }}
+      matrix:
+        include:
+          # Ubuntu LTS - currently supported versions only
+          - name: "Ubuntu 22.04 (Jammy)"
+            image: "ubuntu:22.04"
+            category: "ubuntu-lts"
+          - name: "Ubuntu 24.04 (Noble)"
+            image: "ubuntu:24.04"
+            category: "ubuntu-lts"
+
+          # Debian - current stable and oldstable
+          - name: "Debian 11 (Bullseye)"
+            image: "debian:bullseye"
+            category: "debian"
+          - name: "Debian 12 (Bookworm)"
+            image: "debian:bookworm"
+            category: "debian"
+
+          # Fedora - current and previous release
+          - name: "Fedora 40"
+            image: "fedora:40"
+            category: "fedora"
+          - name: "Fedora 41"
+            image: "fedora:41"
+            category: "fedora"
+
+          # RHEL/CentOS family
+          - name: "CentOS Stream 9"
+            image: "quay.io/centos/centos:stream9"
+            category: "rhel"
+          - name: "Rocky Linux 8"
+            image: "rockylinux:8"
+            category: "rhel"
+          - name: "Rocky Linux 9"
+            image: "rockylinux:9"
+            category: "rhel"
+          - name: "AlmaLinux 8"
+            image: "almalinux:8"
+            category: "rhel"
+          - name: "AlmaLinux 9"
+            image: "almalinux:9"
+            category: "rhel"
+
+          # Rolling releases
+          - name: "Arch Linux"
+            image: "archlinux:latest"
+            category: "rolling"
+          - name: "OpenSUSE Tumbleweed"
+            image: "opensuse/tumbleweed:latest"
+            category: "rolling"
 
     steps:
       - name: Download AppImage
@@ -250,7 +274,7 @@ jobs:
           path: test-results/
 
   report-results:
-    needs: [setup-test-matrix, test-compatibility]
+    needs: test-compatibility
     if: always()
     runs-on: ubuntu-22.04
     steps:
@@ -266,7 +290,6 @@ jobs:
           echo "## 🧪 AppImage Compatibility Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Built on **Ubuntu 18.04** for maximum compatibility" >> $GITHUB_STEP_SUMMARY
-          echo "Testing on **currently-supported distributions only** (EOL versions excluded)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Count results
