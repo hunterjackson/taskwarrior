@@ -91,7 +91,7 @@ jobs:
               mv squashfs-root appimagetool-extracted
 
               # Package AppDir into final AppImage using appimagetool (not linuxdeploy)
-              ARCH=x86_64 ./appimagetool-extracted/AppRun AppDir task.AppImage
+              ARCH=x86_64 ./appimagetool-extracted/AppRun -n AppDir task.AppImage
 
               # Rename AppImage to include version and commit
               VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d= -f2 | tr -d " ")
