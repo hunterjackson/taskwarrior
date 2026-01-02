@@ -113,14 +113,14 @@ jobs:
                 "export PATH=\"\${HERE}/usr/bin:\${PATH}\"" \
                 "export LD_LIBRARY_PATH=\"\${HERE}/usr/lib:\${LD_LIBRARY_PATH}\"" \
                 "exec \"\${HERE}/usr/bin/task\" \"\$@\"" \
-                > AppDir/AppRun
-              chmod +x AppDir/AppRun
+                > custom-apprun.sh
+              chmod +x custom-apprun.sh
 
               # Build AppImage
               ARCH=x86_64 ./squashfs-root/AppRun \
                 --appdir AppDir \
                 --output appimage \
-                --custom-apprun=AppDir/AppRun \
+                --custom-apprun=custom-apprun.sh \
                 --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
                 --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png
 
