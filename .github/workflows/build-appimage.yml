@@ -207,123 +207,25 @@ jobs:
             category: "rolling"
 
     steps:
+      - name: Checkout (for test script)
+        uses: actions/checkout@v4
+
       - name: Download AppImage
         uses: actions/download-artifact@v4
         with:
           name: taskwarrior-appimage
 
       - name: Test AppImage on ${{ matrix.name }}
-        id: test
-        continue-on-error: true
         run: |
-          chmod +x *.AppImage
           APPIMAGE=$(ls -1 *.AppImage | head -1)
-
           echo "Testing $APPIMAGE on ${{ matrix.name }}"
 
-          # Test in container
-          # AppImages need --appimage-extract-and-run in Docker (no FUSE available)
+          # Run test in container using our test script
           docker run --rm \
-            -v $(pwd):/test \
-            -w /test \
+            -v $(pwd):/workspace \
+            -w /workspace \
             ${{ matrix.image }} \
-            bash -c '
-              chmod +x '"$APPIMAGE"'
+            bash /workspace/.github/scripts/test-appimage.sh "/workspace/$APPIMAGE" "${{ matrix.name }}"
 
-              echo "=== Testing --version ==="
-              ./'"$APPIMAGE"' --appimage-extract-and-run --version || exit 1
-
-              echo "=== Testing --help ==="
-              ./'"$APPIMAGE"' --appimage-extract-and-run --help || exit 1
-
-              echo "=== Testing basic task command ==="
-              ./'"$APPIMAGE"' --appimage-extract-and-run rc.data.location=/tmp/tasktest rc.confirmation=no add Test task || exit 1
-              ./'"$APPIMAGE"' --appimage-extract-and-run rc.data.location=/tmp/tasktest list || exit 1
-
-              echo "All tests passed!"
-            ' && echo "result=success" >> $GITHUB_OUTPUT || echo "result=failed" >> $GITHUB_OUTPUT
-
-      - name: Record result
-        if: always()
-        run: |
-          mkdir -p test-results
-          if [ "${{ steps.test.outputs.result }}" = "success" ]; then
-            echo "✅ PASS" > test-results/${{ matrix.category }}-${{ strategy.job-index }}.txt
-          else
-            echo "❌ FAIL" > test-results/${{ matrix.category }}-${{ strategy.job-index }}.txt
-          fi
-          echo "${{ matrix.name }}" >> test-results/${{ matrix.category }}-${{ strategy.job-index }}.txt
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-result-${{ strategy.job-index }}
-          path: test-results/
-
-  report-results:
-    needs: test-compatibility
-    if: always()
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Download all test results
-        uses: actions/download-artifact@v4
-        with:
-          pattern: test-result-*
-          path: all-results
-          merge-multiple: true
-
-      - name: Generate compatibility report
-        run: |
-          echo "## 🧪 AppImage Compatibility Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Built on **Ubuntu 18.04** for maximum compatibility" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Count results
-          TOTAL=$(find all-results -name "*.txt" | wc -l)
-          PASSED=$(grep -l "✅" all-results/*.txt 2>/dev/null | wc -l)
-          FAILED=$(grep -l "❌" all-results/*.txt 2>/dev/null | wc -l)
-
-          echo "### Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Total Tested**: $TOTAL distributions" >> $GITHUB_STEP_SUMMARY
-          echo "- **Passed**: $PASSED ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- **Failed**: $FAILED ❌" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Group by category
-          echo "### Results by Distribution Family" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          for category in ubuntu-lts debian fedora rhel rolling; do
-            FILES=$(find all-results -name "${category}-*.txt" 2>/dev/null)
-            if [ -n "$FILES" ]; then
-              case $category in
-                ubuntu-lts) echo "#### Ubuntu LTS" ;;
-                debian) echo "#### Debian" ;;
-                fedora) echo "#### Fedora" ;;
-                rhel) echo "#### RHEL/CentOS/Rocky/Alma" ;;
-                rolling) echo "#### Rolling Release" ;;
-              esac >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-
-              for file in $FILES; do
-                STATUS=$(head -1 "$file")
-                DISTRO=$(tail -1 "$file")
-                echo "- $STATUS $DISTRO" >> $GITHUB_STEP_SUMMARY
-              done
-              echo "" >> $GITHUB_STEP_SUMMARY
-            fi
-          done
-
-          # Show failures in detail if any
-          if [ $FAILED -gt 0 ]; then
-            echo "### ⚠️ Failed Distributions" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "The following distributions failed compatibility tests:" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            grep -l "❌" all-results/*.txt | while read file; do
-              DISTRO=$(tail -1 "$file")
-              echo "- $DISTRO" >> $GITHUB_STEP_SUMMARY
-            done
-          fi
+  # Note: GitHub Actions automatically tracks which matrix jobs pass/fail
+  # Check the workflow summary to see results for each distribution
