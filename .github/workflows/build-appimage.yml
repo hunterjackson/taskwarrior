@@ -38,7 +38,7 @@ jobs:
 
               # Install build dependencies
               apt-get update -y
-              apt-get install -y build-essential binutils uuid-dev curl wget file libfuse2 ca-certificates pkg-config libssl-dev gnupg software-properties-common git
+              apt-get install -y build-essential binutils uuid-dev curl wget file libfuse2 ca-certificates pkg-config libssl-dev gnupg software-properties-common git libgpgme11
 
               # Install modern CMake from Kitware
               wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
@@ -85,12 +85,14 @@ jobs:
               cp .github/AppRun.template AppDir/AppRun
               chmod +x AppDir/AppRun
 
-              # Download appimagetool to package the AppImage with our custom AppRun
+              # Download and extract appimagetool to package the AppImage with our custom AppRun
               wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
               chmod +x appimagetool-x86_64.AppImage
+              ./appimagetool-x86_64.AppImage --appimage-extract
+              mv squashfs-root appimagetool-extracted
 
-              # Package AppDir into final AppImage using appimagetool
-              ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run -n AppDir task.AppImage
+              # Package AppDir into final AppImage using appimagetool binary
+              ARCH=x86_64 appimagetool-extracted/usr/bin/appimagetool -n AppDir task.AppImage
 
               # Rename AppImage to include version and commit
               VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d= -f2 | tr -d " ")
