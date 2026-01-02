@@ -38,20 +38,7 @@ jobs:
 
               # Install build dependencies
               apt-get update -y
-              apt-get install -y \
-                build-essential \
-                binutils \
-                uuid-dev \
-                curl \
-                wget \
-                file \
-                libfuse2 \
-                ca-certificates \
-                pkg-config \
-                libssl-dev \
-                gnupg \
-                software-properties-common \
-                git
+              apt-get install -y build-essential binutils uuid-dev curl wget file libfuse2 ca-certificates pkg-config libssl-dev gnupg software-properties-common git
 
               # Install modern CMake from Kitware
               wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
@@ -66,10 +53,7 @@ jobs:
               export RUSTUP_HOME=/root/.rustup
 
               # Configure CMake
-              cmake -S . -B build -G Ninja \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_INSTALL_PREFIX=/usr \
-                -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+              cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
 
               # Build
               cmake --build build
@@ -87,27 +71,14 @@ jobs:
 
               # Create AppImage desktop file
               mkdir -p AppDir/usr/share/applications
-              printf "%s\n" \
-                "[Desktop Entry]" \
-                "Type=Application" \
-                "Name=Taskwarrior" \
-                "Comment=Command-line task list manager" \
-                "Exec=task" \
-                "Icon=taskwarrior" \
-                "Terminal=true" \
-                "Categories=Utility;ConsoleOnly;" \
-                > AppDir/usr/share/applications/taskwarrior.desktop
+              printf "%s\n" "[Desktop Entry]" "Type=Application" "Name=Taskwarrior" "Comment=Command-line task list manager" "Exec=task" "Icon=taskwarrior" "Terminal=true" "Categories=Utility;ConsoleOnly;" > AppDir/usr/share/applications/taskwarrior.desktop
 
               # Create AppImage icon
               mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
               wget -q -O AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png https://avatars.githubusercontent.com/u/36100920?s=256 || true
 
-              # Build AppImage (setup dependencies only, don't generate final AppImage yet)
-              ARCH=x86_64 ./squashfs-root/AppRun \
-                --appdir AppDir \
-                --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
-                --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
-                --executable=AppDir/usr/bin/task
+              # Build AppImage (setup dependencies only)
+              ARCH=x86_64 ./squashfs-root/AppRun --appdir AppDir --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png --executable=AppDir/usr/bin/task
 
               # Replace the generated AppRun with our custom one
               cp .github/AppRun.template AppDir/AppRun
