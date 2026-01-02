@@ -104,7 +104,14 @@ jobs:
                 https://avatars.githubusercontent.com/u/36100920?s=256 || \
                 echo "Icon download failed, continuing anyway"
 
-              # Create custom AppRun script
+              # Build AppImage (without custom AppRun first to let linuxdeploy set up everything)
+              ARCH=x86_64 ./squashfs-root/AppRun \
+                --appdir AppDir \
+                --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
+                --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
+                --executable=AppDir/usr/bin/task
+
+              # Now replace the generated AppRun with our custom one
               printf "%s\n" \
                 "#!/bin/bash" \
                 "# AppRun script for Taskwarrior" \
@@ -113,16 +120,13 @@ jobs:
                 "export PATH=\"\${HERE}/usr/bin:\${PATH}\"" \
                 "export LD_LIBRARY_PATH=\"\${HERE}/usr/lib:\${LD_LIBRARY_PATH}\"" \
                 "exec \"\${HERE}/usr/bin/task\" \"\$@\"" \
-                > custom-apprun.sh
-              chmod +x custom-apprun.sh
+                > AppDir/AppRun
+              chmod +x AppDir/AppRun
 
-              # Build AppImage
+              # Now generate the final AppImage with our custom AppRun
               ARCH=x86_64 ./squashfs-root/AppRun \
                 --appdir AppDir \
-                --output appimage \
-                --custom-apprun=custom-apprun.sh \
-                --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
-                --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png
+                --output appimage
 
               # Rename AppImage
               VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d"=" -f2 | tr -d " \n\r")
