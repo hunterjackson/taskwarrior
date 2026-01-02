@@ -112,15 +112,14 @@ jobs:
                 --executable=AppDir/usr/bin/task
 
               # Replace the generated AppRun with our custom one
-              printf "%s\n" \
-                "#!/bin/bash" \
-                "# AppRun script for Taskwarrior" \
-                "SELF=\$(readlink -f \"\$0\")" \
-                "HERE=\${SELF%/*}" \
-                "export PATH=\"\${HERE}/usr/bin:\${PATH}\"" \
-                "export LD_LIBRARY_PATH=\"\${HERE}/usr/lib:\${LD_LIBRARY_PATH}\"" \
-                "exec \"\${HERE}/usr/bin/task\" \"\$@\"" \
-                > AppDir/AppRun
+              {
+                echo "#!/bin/bash"
+                echo "SELF=\$(readlink -f \"\$0\")"
+                echo "HERE=\${SELF%/*}"
+                echo "export PATH=\"\${HERE}/usr/bin:\${PATH}\""
+                echo "export LD_LIBRARY_PATH=\"\${HERE}/usr/lib:\${LD_LIBRARY_PATH}\""
+                echo "exec \"\${HERE}/usr/bin/task\" \"\$@\""
+              } > AppDir/AppRun
               chmod +x AppDir/AppRun
 
               # Download appimagetool to package the AppImage with our custom AppRun
