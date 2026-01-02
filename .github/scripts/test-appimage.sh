@@ -26,20 +26,25 @@ echo ""
 
 # Test 1: Version
 echo "=== Test 1: --version ==="
-if "$APPIMAGE" --appimage-extract-and-run --version; then
+if OUTPUT=$("$APPIMAGE" --appimage-extract-and-run --version 2>&1); then
+  echo "$OUTPUT"
   echo "✅ PASS: --version"
 else
   echo "❌ FAIL: --version"
+  echo "Error output:"
+  echo "$OUTPUT"
   exit 1
 fi
 echo ""
 
 # Test 2: Help
 echo "=== Test 2: --help ==="
-if "$APPIMAGE" --appimage-extract-and-run --help >/dev/null 2>&1; then
+if OUTPUT=$("$APPIMAGE" --appimage-extract-and-run --help 2>&1); then
   echo "✅ PASS: --help"
 else
   echo "❌ FAIL: --help"
+  echo "Error output:"
+  echo "$OUTPUT"
   exit 1
 fi
 echo ""
@@ -47,10 +52,13 @@ echo ""
 # Test 3: Add task
 echo "=== Test 3: Add task ==="
 TASK_DIR=$(mktemp -d)
-if "$APPIMAGE" --appimage-extract-and-run rc.data.location="$TASK_DIR" rc.confirmation=no add "Test task from CI" >/dev/null 2>&1; then
+if OUTPUT=$("$APPIMAGE" --appimage-extract-and-run rc.data.location="$TASK_DIR" rc.confirmation=no add "Test task from CI" 2>&1); then
+  echo "$OUTPUT"
   echo "✅ PASS: Add task"
 else
   echo "❌ FAIL: Add task"
+  echo "Error output:"
+  echo "$OUTPUT"
   rm -rf "$TASK_DIR"
   exit 1
 fi
@@ -58,10 +66,13 @@ echo ""
 
 # Test 4: List tasks
 echo "=== Test 4: List tasks ==="
-if "$APPIMAGE" --appimage-extract-and-run rc.data.location="$TASK_DIR" list >/dev/null 2>&1; then
+if OUTPUT=$("$APPIMAGE" --appimage-extract-and-run rc.data.location="$TASK_DIR" list 2>&1); then
+  echo "$OUTPUT"
   echo "✅ PASS: List tasks"
 else
   echo "❌ FAIL: List tasks"
+  echo "Error output:"
+  echo "$OUTPUT"
   rm -rf "$TASK_DIR"
   exit 1
 fi
