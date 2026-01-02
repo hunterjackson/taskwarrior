@@ -104,14 +104,14 @@ jobs:
                 https://avatars.githubusercontent.com/u/36100920?s=256 || \
                 echo "Icon download failed, continuing anyway"
 
-              # Build AppImage (without custom AppRun first to let linuxdeploy set up everything)
+              # Build AppImage (setup dependencies only, don't generate final AppImage yet)
               ARCH=x86_64 ./squashfs-root/AppRun \
                 --appdir AppDir \
                 --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
                 --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
                 --executable=AppDir/usr/bin/task
 
-              # Now replace the generated AppRun with our custom one
+              # Replace the generated AppRun with our custom one
               printf "%s\n" \
                 "#!/bin/bash" \
                 "# AppRun script for Taskwarrior" \
@@ -123,27 +123,23 @@ jobs:
                 > AppDir/AppRun
               chmod +x AppDir/AppRun
 
-              # Now generate the final AppImage with our custom AppRun
-              ARCH=x86_64 ./squashfs-root/AppRun \
-                --appdir AppDir \
-                --output appimage
+              # Download appimagetool to package the AppImage with our custom AppRun
+              wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+              chmod +x appimagetool-x86_64.AppImage
+              ./appimagetool-x86_64.AppImage --appimage-extract
+              mv squashfs-root appimagetool-extracted
 
-              # Rename AppImage
+              # Package AppDir into final AppImage using appimagetool (not linuxdeploy)
+              ARCH=x86_64 ./appimagetool-extracted/AppRun AppDir task.AppImage
+
+              # Rename AppImage to include version and commit
               VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d"=" -f2 | tr -d " \n\r")
               echo "Detected version: $VERSION"
               echo "Git commit: $GIT_COMMIT"
 
-              # List what we have
-              ls -la *.AppImage || echo "No AppImage files found"
-
-              # Find the generated AppImage and rename it
-              for appimage in *.AppImage; do
-                if [ -f "$appimage" ]; then
-                  echo "Renaming $appimage to taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage"
-                  mv "$appimage" "taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage"
-                  break
-                fi
-              done
+              mv task.AppImage "taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage"
+              echo "Created: taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage"
+              ls -lh taskwarrior-*.AppImage
 
               # Make AppImage executable
               chmod +x taskwarrior-*.AppImage
