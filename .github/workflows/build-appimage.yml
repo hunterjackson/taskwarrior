@@ -104,13 +104,25 @@ jobs:
                 https://avatars.githubusercontent.com/u/36100920?s=256 || \
                 echo "Icon download failed, continuing anyway"
 
+              # Create custom AppRun script
+              printf "%s\n" \
+                "#!/bin/bash" \
+                "# AppRun script for Taskwarrior" \
+                "SELF=\$(readlink -f \"\$0\")" \
+                "HERE=\${SELF%/*}" \
+                "export PATH=\"\${HERE}/usr/bin:\${PATH}\"" \
+                "export LD_LIBRARY_PATH=\"\${HERE}/usr/lib:\${LD_LIBRARY_PATH}\"" \
+                "exec \"\${HERE}/usr/bin/task\" \"\$@\"" \
+                > AppDir/AppRun
+              chmod +x AppDir/AppRun
+
               # Build AppImage
               ARCH=x86_64 ./squashfs-root/AppRun \
                 --appdir AppDir \
                 --output appimage \
+                --custom-apprun=AppDir/AppRun \
                 --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop \
-                --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
-                --executable=AppDir/usr/bin/task
+                --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png
 
               # Rename AppImage
               VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d"=" -f2 | tr -d " \n\r")
