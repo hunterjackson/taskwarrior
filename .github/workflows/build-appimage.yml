@@ -68,6 +68,7 @@ jobs:
               wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
               chmod +x linuxdeploy-x86_64.AppImage
               ./linuxdeploy-x86_64.AppImage --appimage-extract
+              mv squashfs-root linuxdeploy-extracted
 
               # Create AppImage desktop file
               mkdir -p AppDir/usr/share/applications
@@ -78,7 +79,7 @@ jobs:
               wget -q -O AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png https://avatars.githubusercontent.com/u/36100920?s=256 || true
 
               # Build AppImage (setup dependencies only)
-              ARCH=x86_64 ./squashfs-root/AppRun --appdir AppDir --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png --executable=AppDir/usr/bin/task
+              ARCH=x86_64 ./linuxdeploy-extracted/AppRun --appdir AppDir --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png --executable=AppDir/usr/bin/task
 
               # Replace the generated AppRun with our custom one
               cp .github/AppRun.template AppDir/AppRun
