@@ -100,9 +100,7 @@ jobs:
 
               # Create AppImage icon
               mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-              wget -q -O AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png \
-                https://avatars.githubusercontent.com/u/36100920?s=256 || \
-                echo "Icon download failed, continuing anyway"
+              wget -q -O AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png https://avatars.githubusercontent.com/u/36100920?s=256 || true
 
               # Build AppImage (setup dependencies only, don't generate final AppImage yet)
               ARCH=x86_64 ./squashfs-root/AppRun \
@@ -125,7 +123,7 @@ jobs:
               ARCH=x86_64 ./appimagetool-extracted/AppRun AppDir task.AppImage
 
               # Rename AppImage to include version and commit
-              VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d"=" -f2 | tr -d " \n\r")
+              VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d= -f2 | tr -d " ")
               echo "Detected version: $VERSION"
               echo "Git commit: $GIT_COMMIT"
 
