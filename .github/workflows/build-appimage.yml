@@ -1,0 +1,205 @@
+name: Build AppImage
+
+on:
+  push:
+    branches:
+      - stable
+  pull_request:
+    branches:
+      - stable
+  workflow_dispatch:
+    # Allow manual triggering
+
+jobs:
+  build-appimage:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Get version info
+        id: version
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build AppImage in Ubuntu 18.04 container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e GIT_COMMIT=${{ steps.version.outputs.commit }} \
+            ubuntu:18.04 \
+            bash -c '
+              set -e
+
+              # Install build dependencies
+              apt-get update -y
+              apt-get install -y build-essential binutils uuid-dev curl wget file libfuse2 ca-certificates pkg-config libssl-dev gnupg software-properties-common git libgpgme11 desktop-file-utils
+
+              # Install modern CMake from Kitware
+              wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+              echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ bionic main" | tee /etc/apt/sources.list.d/kitware.list >/dev/null
+              apt-get update -y
+              apt-get install -y cmake ninja-build
+
+              # Install Rust
+              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+              export PATH="$HOME/.cargo/bin:$PATH"
+              export CARGO_HOME=/root/.cargo
+              export RUSTUP_HOME=/root/.rustup
+
+              # Configure CMake
+              cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+
+              # Build
+              cmake --build build
+
+              # Strip binaries
+              strip --strip-all build/src/task
+
+              # Install to AppDir
+              DESTDIR=/workspace/AppDir cmake --install build
+
+              # Download and extract linuxdeploy
+              wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+              chmod +x linuxdeploy-x86_64.AppImage
+              ./linuxdeploy-x86_64.AppImage --appimage-extract
+              mv squashfs-root linuxdeploy-extracted
+
+              # Create AppImage desktop file
+              mkdir -p AppDir/usr/share/applications
+              printf "%s\n" "[Desktop Entry]" "Type=Application" "Name=Taskwarrior" "Comment=Command-line task list manager" "Exec=task" "Icon=taskwarrior" "Terminal=true" "Categories=Utility;ConsoleOnly;" > AppDir/usr/share/applications/taskwarrior.desktop
+
+              # Create AppImage icon
+              mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+              wget -q -O AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png https://avatars.githubusercontent.com/u/36100920?s=256 || true
+
+              # Build AppImage (setup dependencies only)
+              ARCH=x86_64 ./linuxdeploy-extracted/AppRun --appdir AppDir --desktop-file=AppDir/usr/share/applications/taskwarrior.desktop --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/taskwarrior.png --executable=AppDir/usr/bin/task
+
+              # Replace the generated AppRun with our custom one
+              cp .github/AppRun.template AppDir/AppRun
+              chmod +x AppDir/AppRun
+
+              # Download and extract appimagetool to package the AppImage with our custom AppRun
+              wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+              chmod +x appimagetool-x86_64.AppImage
+              ./appimagetool-x86_64.AppImage --appimage-extract
+              mv squashfs-root appimagetool-extracted
+
+              # Package AppDir into final AppImage using appimagetool binary
+              ARCH=x86_64 appimagetool-extracted/usr/bin/appimagetool -n AppDir task.AppImage
+
+              # Rename AppImage to include version and commit
+              VERSION=$(grep "PROJECT_VERSION:STATIC" build/CMakeCache.txt | cut -d= -f2 | tr -d " ")
+              echo "Detected version: $VERSION"
+              echo "Git commit: $GIT_COMMIT"
+
+              mv task.AppImage "taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage"
+              echo "Created: taskwarrior-${VERSION}-${GIT_COMMIT}-x86_64.AppImage"
+              ls -lh taskwarrior-*.AppImage
+
+              # Make AppImage executable
+              chmod +x taskwarrior-*.AppImage
+
+              # Test AppImage
+              ./taskwarrior-*.AppImage --version || echo "Version check failed but continuing"
+            '
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskwarrior-appimage
+          path: '*.AppImage'
+          if-no-files-found: error
+
+      - name: Build Summary
+        run: |
+          echo "### AppImage Build Completed :package:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "AppImage built successfully!" >> $GITHUB_STEP_SUMMARY
+          ls -lh *.AppImage >> $GITHUB_STEP_SUMMARY
+
+  test-compatibility:
+    needs: build-appimage
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu LTS - currently supported versions only
+          - name: "Ubuntu 22.04 (Jammy)"
+            image: "ubuntu:22.04"
+            category: "ubuntu-lts"
+          - name: "Ubuntu 24.04 (Noble)"
+            image: "ubuntu:24.04"
+            category: "ubuntu-lts"
+
+          # Debian - current stable and oldstable
+          - name: "Debian 11 (Bullseye)"
+            image: "debian:bullseye"
+            category: "debian"
+          - name: "Debian 12 (Bookworm)"
+            image: "debian:bookworm"
+            category: "debian"
+
+          # Fedora - current and previous release
+          - name: "Fedora 40"
+            image: "fedora:40"
+            category: "fedora"
+          - name: "Fedora 41"
+            image: "fedora:41"
+            category: "fedora"
+
+          # RHEL/CentOS family
+          - name: "CentOS Stream 9"
+            image: "quay.io/centos/centos:stream9"
+            category: "rhel"
+          - name: "Rocky Linux 8"
+            image: "rockylinux:8"
+            category: "rhel"
+          - name: "Rocky Linux 9"
+            image: "rockylinux:9"
+            category: "rhel"
+          - name: "AlmaLinux 8"
+            image: "almalinux:8"
+            category: "rhel"
+          - name: "AlmaLinux 9"
+            image: "almalinux:9"
+            category: "rhel"
+
+          # Rolling releases
+          - name: "Arch Linux"
+            image: "archlinux:latest"
+            category: "rolling"
+          - name: "OpenSUSE Tumbleweed"
+            image: "opensuse/tumbleweed:latest"
+            category: "rolling"
+
+    steps:
+      - name: Checkout (for test script)
+        uses: actions/checkout@v4
+
+      - name: Download AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: taskwarrior-appimage
+
+      - name: Test AppImage on ${{ matrix.name }}
+        run: |
+          APPIMAGE=$(ls -1 *.AppImage | head -1)
+          echo "Testing $APPIMAGE on ${{ matrix.name }}"
+
+          # Run test in container using our test script
+          docker run --rm \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            ${{ matrix.image }} \
+            bash /workspace/.github/scripts/test-appimage.sh "/workspace/$APPIMAGE" "${{ matrix.name }}"
+
+  # Note: GitHub Actions automatically tracks which matrix jobs pass/fail
+  # Check the workflow summary to see results for each distribution
