@@ -38,7 +38,7 @@ jobs:
 
               # Install build dependencies
               apt-get update -y
-              apt-get install -y build-essential binutils uuid-dev curl wget file libfuse2 ca-certificates pkg-config libssl-dev gnupg software-properties-common git libgpgme11
+              apt-get install -y build-essential binutils uuid-dev curl wget file libfuse2 ca-certificates pkg-config libssl-dev gnupg software-properties-common git libgpgme11 desktop-file-utils
 
               # Install modern CMake from Kitware
               wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
